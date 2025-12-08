@@ -1,0 +1,22 @@
+[build]
+  # Build command for Vite React app
+  command = "npm run build"
+  
+  # Directory to publish (Vite outputs to 'dist')
+  publish = "dist"
+
+# Redirect rules for Single Page Application (SPA)
+# All routes should serve index.html for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Environment variables should be set in Netlify dashboard:
+# - VITE_BICONOMY_API_KEY (required)
+# - VITE_BICONOMY_PROJECT_ID (required)
+# - VITE_DEFAULT_TOKEN_ADDRESS (optional)
+# - VITE_DEFAULT_TOKEN_DECIMALS (optional)
+# - VITE_DEFAULT_TOKEN_SYMBOL (optional)
+# - VITE_DEFAULT_TOKEN_NAME (optional)
+
