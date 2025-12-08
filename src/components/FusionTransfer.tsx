@@ -352,7 +352,7 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
       setStatus({ type: 'loading', message: 'Initializing MEE Client...' })
       
       if (!config.biconomy.apiKey) {
-        throw new Error('Biconomy API key is required. Please configure BICONOMY_API_KEY in your environment variables.')
+        throw new Error('Biconomy API key is not configured. Please check your configuration.')
       }
       
       const meeClient = await createMeeClient({
@@ -568,7 +568,7 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
         
         // Check for API key related errors
         if (err.message?.includes('API key') || err.message?.includes('authentication')) {
-          errorMessage = 'API key issue. Please check your Biconomy API key in environment variables (BICONOMY_API_KEY)'
+          errorMessage = 'API key issue. Please check your Biconomy API key configuration.'
         }
         
         // Check for sponsorship errors
