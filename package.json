@@ -13,13 +13,17 @@
   },
   "dependencies": {
     "@biconomy/abstractjs": "^1.0.0",
+    "@reown/appkit": "^1.6.3",
+    "@reown/appkit-adapter-wagmi": "^1.6.3",
+    "@tanstack/react-query": "^5.62.6",
+    "browserify-zlib": "^0.2.0",
+    "process": "^0.11.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "viem": "^2.7.0",
-    "process": "^0.11.10",
     "stream-browserify": "^3.0.0",
-    "browserify-zlib": "^0.2.0",
-    "util": "^0.12.5"
+    "util": "^0.12.5",
+    "viem": "^2.7.0",
+    "wagmi": "^2.12.10"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

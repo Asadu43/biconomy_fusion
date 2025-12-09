@@ -136,6 +136,53 @@ interface FusionTransferProps {
   userAddress: string
 }
 
+// Helper to get the currently connected wallet provider
+const getConnectedWalletProvider = (walletClient: WalletClient) => {
+  if (typeof window === 'undefined' || !window.ethereum) {
+    return null
+  }
+
+  // Get the transport from wallet client to identify which wallet is connected
+  const transport = (walletClient as any).transport
+  const connectorName = (walletClient as any).connector?.name || ''
+  
+  console.log('🔍 Detecting wallet from client:', connectorName)
+
+  // If multiple providers exist
+  if ((window.ethereum as any).providers) {
+    const providers = (window.ethereum as any).providers
+    
+    // Try to match by connector name
+    if (connectorName.toLowerCase().includes('trust')) {
+      const trustWallet = providers.find((p: any) => p.isTrust || p.isTrustWallet)
+      if (trustWallet) {
+        console.log('✅ Using Trust Wallet provider')
+        return trustWallet
+      }
+    }
+    
+    if (connectorName.toLowerCase().includes('metamask')) {
+      const metamask = providers.find((p: any) => p.isMetaMask)
+      if (metamask) {
+        console.log('✅ Using MetaMask provider')
+        return metamask
+      }
+    }
+    
+    if (connectorName.toLowerCase().includes('coinbase')) {
+      const coinbase = providers.find((p: any) => p.isCoinbaseWallet)
+      if (coinbase) {
+        console.log('✅ Using Coinbase Wallet provider')
+        return coinbase
+      }
+    }
+  }
+  
+  // Single provider or default
+  console.log('✅ Using default ethereum provider')
+  return window.ethereum
+}
+
 // Add this helper function to verify permit support
 const verifyPermitSupport = async (
   tokenAddress: string,
@@ -194,6 +241,7 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
     message: string
   }>({ type: '', message: '' })
   const [txHash, setTxHash] = useState('')
+  const [detectedWallet, setDetectedWallet] = useState<string>('')
   
   // Token info state
   const [tokenInfo, setTokenInfo] = useState<{
@@ -207,6 +255,19 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
     balance: '',
     isLoading: false
   })
+
+  // Detect wallet on mount
+  useEffect(() => {
+    const provider = getConnectedWalletProvider(walletClient)
+    if (provider) {
+      const name = (provider as any).isMetaMask ? 'MetaMask' : 
+                   (provider as any).isTrust || (provider as any).isTrustWallet ? 'Trust Wallet' : 
+                   (provider as any).isCoinbaseWallet ? 'Coinbase Wallet' : 
+                   'Your Wallet'
+      setDetectedWallet(name)
+      console.log('💼 Wallet detected for transactions:', name)
+    }
+  }, [walletClient])
 
   // Filter out expected RPC errors from console (these are normal during permit checks)
   useEffect(() => {
@@ -313,30 +374,42 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
     setTxHash('')
 
     try {
-      // Step 0: Verify token has permit support
-      setStatus({ type: 'loading', message: 'Verifying token permit support...' })
-      
-      const hasPermit = await verifyPermitSupport(tokenAddress, userAddress)
-      
-      if (!hasPermit) {
+      // Step 0: Verify wallet client is properly connected
+      if (!walletClient) {
         setStatus({ 
           type: 'error', 
-          message: `⚠️ Token permit verification failed!
-          
-          Token: ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}
-          
-          Please ensure:
-          1. Token contract is deployed with ERC20Permit
-          2. Token contract is not paused
-          3. DOMAIN_SEPARATOR is properly configured
-          
-          Your contract uses ERC20Permit, so this should work. Please check the deployment.`
+          message: 'Wallet client not available. Please reconnect your wallet.' 
         })
         setIsProcessing(false)
         return
       }
 
-      // Step 1: Create Companion Account (Orchestrator)
+      // Verify the wallet client account matches the connected address
+      if (walletClient.account?.address?.toLowerCase() !== userAddress.toLowerCase()) {
+        setStatus({ 
+          type: 'error', 
+          message: `Wallet mismatch detected. Please disconnect and reconnect your wallet.
+          
+          Expected: ${userAddress}
+          Got: ${walletClient.account?.address || 'none'}` 
+        })
+        setIsProcessing(false)
+        return
+      }
+
+      // Get wallet provider (no logging for speed)
+      const provider = getConnectedWalletProvider(walletClient)
+      if (!provider) {
+        throw new Error('No wallet provider found.')
+      }
+      
+      const isTrustWallet = (provider as any).isTrust || (provider as any).isTrustWallet
+      const isMetaMask = (provider as any).isMetaMask
+      const walletName = isMetaMask ? 'MetaMask' : isTrustWallet ? 'Trust Wallet' : 'Wallet'
+      
+      setStatus({ type: 'loading', message: `Using ${walletName} for signing...` })
+      
+      // Step 2: Create Companion Account (Orchestrator) with the correct wallet
       setStatus({ type: 'loading', message: 'Creating Companion Account...' })
       
       const orchestrator = await toMultichainNexusAccount({
@@ -388,111 +461,43 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
       // Step 6: Get Fusion Quote with Sponsorship
       setStatus({ type: 'loading', message: 'Getting Fusion quote...' })
       
+      // Get fusion quote (minimal logging for speed)
+      console.log('⚡ Getting fusion quote...')
+      
       const fusionQuote = await meeClient.getFusionQuote({
         sponsorship: true,
         trigger,
         instructions: [transferInstruction]
       })
       
-      // Check quote for approval calls
+      // Quick check for approval calls (no detailed logging)
       const quoteData = fusionQuote as any
       const userOps = quoteData?.quote?.userOps || []
       
-      // Check for approval calls in userOps
       let hasApprovalCall = false
-      
       for (const userOp of userOps) {
         const callData = userOp?.userOp?.callData || ''
-        
-        // Check for approve function selector
         if (callData && typeof callData === 'string' && callData.toLowerCase().includes('095ea7b3')) {
           hasApprovalCall = true
           break
         }
       }
       
-      // If approval call detected, warn user
       if (hasApprovalCall) {
         setStatus({ 
           type: 'error', 
-          message: `⚠️ Token requires approval transaction. This token may not fully support ERC-2612 permit, or the SDK is using onchain approval. You'll need a small amount of MATIC for the approval transaction.`
+          message: `⚠️ This token requires approval transaction (needs gas). Please ensure you have ~0.001 MATIC for approval.`
         })
         setIsProcessing(false)
         return
       }
 
-      // Step 7: Execute the Fusion transaction
-      // This should only ask for signature, not approval transaction
-      setStatus({ 
-        type: 'loading', 
-        message: '✅ Using Permit Signature - MetaMask should ask for SIGNATURE only (not approval transaction). If you see an approval transaction, cancel it!' 
-      })
-      
-      console.log('🚀 Executing Fusion Quote - MetaMask should show SIGNATURE request, NOT approval transaction')
-      
-      // Intercept MetaMask requests to prevent approval transactions
-      // If SDK tries to send approval transaction, we'll block it
-      const originalRequest = (window.ethereum as any)?.request
-      let approvalBlocked = false
-      
-      if (originalRequest && window.ethereum) {
-        (window.ethereum as any).request = async (args: any) => {
-          // Check if this is an approval transaction
-          if (args?.method === 'eth_sendTransaction') {
-            const tx = args?.params?.[0]
-            if (tx?.to?.toLowerCase() === tokenAddress.toLowerCase()) {
-              // Check if it's an approve call
-              const data = tx?.data || ''
-              if (data.toLowerCase().includes('095ea7b3') || // approve function selector
-                  data.toLowerCase().startsWith('0x095ea7b3')) {
-                console.error('❌ BLOCKED: SDK tried to send approval transaction!')
-                console.error('This should not happen - permit signature should be used instead')
-                console.error('Transaction data:', data.substring(0, 100))
-                
-                approvalBlocked = true
-                setStatus({
-                  type: 'error',
-                  message: `❌ BLOCKED: SDK tried to send approval transaction!
-                  
-                  We detected that SDK attempted to send an approval transaction instead of using permit signature.
-                  
-                  This is a SDK issue - it should use permit signature but is falling back to approval.
-                  
-                  Possible causes:
-                  1. SDK's internal permit check is failing (RPC errors)
-                  2. SDK version compatibility issue
-                  3. Token not recognized by SDK backend
-                  
-                  Solutions:
-                  1. Check Biconomy Dashboard - ensure token is recognized
-                  2. Try different RPC endpoint
-                  3. Contact Biconomy support
-                  4. Check SDK version compatibility
-                  
-                  The approval transaction has been blocked to prevent gas costs.`
-                })
-                setIsProcessing(false)
-                throw new Error('Approval transaction blocked - permit signature should be used instead')
-              }
-            }
-          }
-          
-          // Allow other requests to proceed
-          return originalRequest.call(window.ethereum, args)
-        }
-      }
+      // Execute transaction immediately (no delays)
+      setStatus({ type: 'loading', message: `⚡ Opening ${walletName} for signature...` })
+      console.log(`⚡ Executing fusion quote...`)
       
       try {
         const result = await meeClient.executeFusionQuote({ fusionQuote })
-        
-        // Restore original request method
-        if (originalRequest && window.ethereum) {
-          (window.ethereum as any).request = originalRequest
-        }
-        
-        if (approvalBlocked) {
-          return // Already handled error above
-        }
       
         // Extract hash - ensure it's a string
         const transactionHash = result?.hash || (result as any)?.transactionHash || ''
@@ -520,65 +525,16 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
         setAmount('')
 
       } catch (err: any) {
-        // Restore original request method in case of error
-        if (originalRequest && window.ethereum) {
-          (window.ethereum as any).request = originalRequest
-        }
         
-        // If approval was blocked, error already handled
-        if (approvalBlocked) {
-          return
-        }
-        
-        // Provide more helpful error messages
+        // Simplified error messages
         let errorMessage = err.message || 'Transfer failed. Please try again.'
         
-        // Check for network/fetch errors
-        if (err.message?.includes('Failed to fetch') || err.message?.includes('ERR_NAME_NOT_RESOLVED') || err.name === 'TypeError') {
-          errorMessage = `Network error: Unable to connect to Biconomy services. This might be due to:
-          1. Internet connection issues
-          2. Biconomy service temporarily unavailable
-          3. Firewall or network restrictions
-          
-          Please check your internet connection and try again. If the issue persists, the token might not support permit (ERC-2612), which requires a small amount of MATIC for approval.`
-        }
-        
-        // Check for RPC errors (MetaMask permit check failures are normal)
-        if (err.message?.includes('Internal JSON-RPC error') || err.message?.includes('RPC Error')) {
-          // These errors are often from permit checks - SDK should handle them
-          errorMessage = `RPC error detected. This is usually normal when checking token permit support.
-          
-          The SDK will automatically fallback to onchain approval if permit is not supported.
-          Please ensure:
-          1. MetaMask is connected to ${config.chain.name} (Chain ID: ${config.chain.id})
-          2. You have a small amount of MATIC for gas (if token doesn't support permit)
-          3. Try the transaction again - it should work on retry`
-        }
-        
-        // Check for chain support errors
-        if (err.message?.includes('not supported by the MEE node')) {
-          errorMessage = `Chain support error. ${config.chain.name} (Chain ID: ${config.chain.id}) should be supported. Please ensure:
-          1. Your Biconomy project is set up for ${config.chain.name} in the dashboard
-          2. API key is correctly configured (current: ${config.biconomy.apiKey ? 'Set' : 'Missing'})
-          3. The project is enabled for ${config.chain.name}
-          4. You're using a supported MEE version (currently using 2.1.0)
-          
-          If the issue persists, verify your Biconomy Dashboard project settings for ${config.chain.name}.`
-        }
-        
-        // Check for API key related errors
-        if (err.message?.includes('API key') || err.message?.includes('authentication')) {
-          errorMessage = 'API key issue. Please check your Biconomy API key configuration.'
-        }
-        
-        // Check for sponsorship errors
-        if (err.message?.includes('sponsorship') || err.message?.includes('gas tank')) {
-          errorMessage = `Sponsorship error. Please ensure:
-          1. Your Biconomy gas tank is funded
-          2. Sponsorship is enabled in your Biconomy project settings
-          3. The project is configured for ${config.chain.name}
-          
-          Note: If sponsorship fails, the transaction will use regular gas payment.`
+        if (err.code === 4001 || err.message?.includes('User rejected')) {
+          errorMessage = 'Transaction rejected by user.'
+        } else if (err.message?.includes('not been authorized')) {
+          errorMessage = 'Wallet not authorized. Please disconnect and reconnect.'
+        } else if (err.message?.includes('Failed to fetch')) {
+          errorMessage = 'Network error. Check your internet connection.'
         }
         
         setStatus({ 
@@ -603,6 +559,48 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
         <p style={{ color: '#888', fontSize: '0.9em' }}>
           Transfer tokens with gas fees sponsored by Biconomy
         </p>
+        {detectedWallet && (
+          <>
+            <div style={{ 
+              marginTop: '0.75rem', 
+              padding: '0.5rem 0.75rem', 
+              backgroundColor: detectedWallet === 'Trust Wallet' ? '#4d1a1a' : '#1a4d1a',
+              border: `1px solid ${detectedWallet === 'Trust Wallet' ? '#5a2d2d' : '#2d5a3d'}`,
+              borderRadius: '6px',
+              fontSize: '0.85em',
+              color: detectedWallet === 'Trust Wallet' ? '#f87171' : '#4ade80'
+            }}>
+              {detectedWallet === 'Trust Wallet' ? '⚠️' : '✓'} Transactions will be signed with <strong>{detectedWallet}</strong>
+            </div>
+            
+            {detectedWallet === 'Trust Wallet' && (
+              <div style={{ 
+                marginTop: '0.5rem', 
+                padding: '0.75rem', 
+                backgroundColor: '#1a1a1a',
+                border: '1px solid #333',
+                borderRadius: '6px',
+                fontSize: '0.85em',
+                color: '#aaa'
+              }}>
+                <div style={{ color: '#f87171', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  ⚠️ Trust Wallet Limitation
+                </div>
+                <div style={{ fontSize: '0.9em', lineHeight: '1.5' }}>
+                  Trust Wallet has limited support for <strong>EIP-712 permit signatures</strong>.
+                  <br/><br/>
+                  <strong>What this means:</strong>
+                  <ul style={{ marginTop: '0.5rem', marginBottom: '0.5rem', paddingLeft: '1.5rem' }}>
+                    <li>You may see an <strong>approval transaction</strong> (not just signature)</li>
+                    <li>This approval requires a <strong>small gas fee</strong> (~0.001 MATIC)</li>
+                    <li>You need MATIC in your wallet for the approval</li>
+                  </ul>
+                  <strong>Recommendation:</strong> Use <strong>MetaMask</strong> for fully gasless transactions with permit signatures.
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Token Info Display */}

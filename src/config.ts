@@ -3,6 +3,16 @@ import { polygon } from 'viem/chains'
 export const config = {
   // Network configuration - Polygon Mainnet
   chain: polygon,
+  // WalletConnect / Web3Modal configuration
+  walletConnect: {
+    projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'REPLACE_WITH_WALLETCONNECT_PROJECT_ID',
+    metadata: {
+      name: 'Fusion Transfer Demo',
+      description: 'Transfer tokens with Biconomy Fusion',
+      url: typeof window !== 'undefined' ? window.location.origin : 'https://fusion-transaction-demo',
+      icons: ['https://avatars.githubusercontent.com/u/111761645?s=200&v=4']
+    }
+  },
   
   // Default token configuration
   defaultToken: {

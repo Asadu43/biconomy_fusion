@@ -1,97 +1,79 @@
-import { useState } from 'react'
-import { createWalletClient, custom } from 'viem'
-import type { WalletClient } from 'viem'
+import { useEffect, useState } from 'react'
+import { useAccount, useDisconnect, useWalletClient } from 'wagmi'
+import { useAppKit } from '@reown/appkit/react'
 import { config } from '../config'
 
-interface WalletConnectProps {
-  onConnect: (client: WalletClient, address: string) => void
-}
-
-export default function WalletConnect({ onConnect }: WalletConnectProps) {
-  const [isConnecting, setIsConnecting] = useState(false)
+export default function WalletConnect() {
+  const { open } = useAppKit()
+  const { address, isConnecting, status, connector } = useAccount()
+  const { disconnect } = useDisconnect()
+  const { data: walletClient } = useWalletClient()
   const [error, setError] = useState<string>('')
+  const [walletInfo, setWalletInfo] = useState<string>('')
 
-  const connectWallet = async () => {
-    setIsConnecting(true)
+  useEffect(() => {
     setError('')
-
-    try {
-      // Check if MetaMask is installed
-      if (!window.ethereum) {
-        throw new Error('MetaMask is not installed. Please install MetaMask to continue.')
-      }
-
-      // Check current chain and switch if needed
-      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' })
-      const targetChainId = `0x${config.chain.id.toString(16)}`
-
-      if (currentChainId !== targetChainId) {
-        try {
-          // Try to switch to Polygon network
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: targetChainId }],
-          })
-        } catch (switchError: any) {
-          // This error code indicates that the chain has not been added to MetaMask
-          if (switchError.code === 4902) {
-            // Add Polygon network to MetaMask
-            await window.ethereum.request({
-              method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: targetChainId,
-                chainName: config.chain.name,
-                nativeCurrency: {
-                  name: 'MATIC',
-                  symbol: 'MATIC',
-                  decimals: 18,
-                },
-                rpcUrls: [config.chain.rpcUrls.default.http[0]],
-                blockExplorerUrls: [config.explorer.baseUrl],
-              }],
-            })
-          } else {
-            throw switchError
-          }
+    
+    // Detect which wallet is connected
+    if (connector) {
+      const name = connector.name || 'Unknown'
+      setWalletInfo(`Connected via: ${name}`)
+      console.log('🔗 Wallet connector:', name, connector.id)
+      
+      // Warn if multiple wallets detected
+      if (typeof window !== 'undefined' && window.ethereum) {
+        const providers = (window.ethereum as any).providers
+        if (providers && providers.length > 1) {
+          console.warn('⚠️ Multiple wallets detected:', providers.map((p: any) => 
+            p.isMetaMask ? 'MetaMask' : p.isTrust ? 'Trust Wallet' : 'Unknown'
+          ))
         }
       }
+    }
+  }, [address, status, connector])
 
-      // Create wallet client
-      const walletClient = createWalletClient({
-        chain: config.chain,
-        transport: custom(window.ethereum)
-      })
-
-      // Request account access
-      const [address] = await walletClient.requestAddresses()
-
-      if (!address) {
-        throw new Error('No address returned from wallet')
-      }
-
-      onConnect(walletClient, address)
+  const handleConnect = async () => {
+    try {
+      setError('')
+      await open({ view: 'Connect' })
     } catch (err: any) {
-      console.error('Wallet connection error:', err)
-      setError(err.message || 'Failed to connect wallet')
-    } finally {
-      setIsConnecting(false)
+      setError(err?.message || 'Failed to open wallet modal')
     }
   }
+
+  const handleDisconnect = () => {
+    disconnect()
+  }
+
+  const connected = Boolean(address && walletClient)
 
   return (
     <div className="card">
       <h2>Connect Your Wallet</h2>
       <p style={{ marginBottom: '1.5rem', color: '#888' }}>
-        Connect MetaMask or any EIP-1193 compatible wallet to get started
+        Connect with any wallet (MetaMask, Trust Wallet, WalletConnect, etc.)
       </p>
 
       <button 
-        onClick={connectWallet} 
+        onClick={connected ? handleDisconnect : handleConnect} 
         disabled={isConnecting}
         style={{ width: '100%', padding: '1em' }}
       >
-        {isConnecting ? 'Connecting...' : '🦊 Connect Wallet'}
+        {isConnecting ? 'Connecting...' : connected ? 'Disconnect Wallet' : '🔌 Connect Wallet'}
       </button>
+
+      {connected && address && (
+        <>
+          <div className="status success" style={{ marginTop: '1rem' }}>
+            <strong>Connected:</strong> {address.slice(0, 6)}...{address.slice(-4)}
+          </div>
+          {walletInfo && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.9em', color: '#4ade80' }}>
+              {walletInfo}
+            </div>
+          )}
+        </>
+      )}
 
       {error && (
         <div className="status error" style={{ marginTop: '1rem' }}>
@@ -108,11 +90,3 @@ export default function WalletConnect({ onConnect }: WalletConnectProps) {
     </div>
   )
 }
-
-// Extend Window interface for TypeScript
-declare global {
-  interface Window {
-    ethereum?: any
-  }
-}
-
