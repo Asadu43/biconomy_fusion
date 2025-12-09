@@ -1,13 +1,23 @@
 import { polygon } from 'viem/chains'
 
 export const config = {
-  // Network configuration - Polygon Mainnet
-  chain: polygon,
+  // Network configuration - Polygon Mainnet with custom RPC
+  chain: {
+    ...polygon,
+    rpcUrls: {
+      default: {
+        http: ['https://polygon-mainnet.g.alchemy.com/v2/j6ZNSZp6cDpLZMOeST0un']
+      },
+      public: {
+        http: ['https://polygon-mainnet.g.alchemy.com/v2/j6ZNSZp6cDpLZMOeST0un']
+      }
+    }
+  },
   // WalletConnect / Web3Modal configuration
   walletConnect: {
     projectId: '18244949caa0c68708c2025b6a32ed46',
     metadata: {
-      name: 'Fusion Transfer Demo',
+      name: 'Fusion Transfer',
       description: 'Transfer tokens with Biconomy Fusion',
       url: typeof window !== 'undefined' ? window.location.origin : 'https://fusion-transaction-demo',
       icons: ['https://avatars.githubusercontent.com/u/111761645?s=200&v=4']
