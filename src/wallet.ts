@@ -27,7 +27,7 @@ createAppKit({
   metadata: appConfig.walletConnect.metadata,
   themeMode: 'dark',
   defaultNetwork: appConfig.chain,
-  allowUnsupportedChain: false,
+  allowUnsupportedChain: true, // Allow unsupported chains - we handle network switching in our UI instead of AppKit's modal
   features: {
     analytics: false,
     email: false,

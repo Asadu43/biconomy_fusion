@@ -1,41 +1,61 @@
 import { polygon } from 'viem/chains'
 
+// Get all values from environment variables (loaded via vite.config.ts)
+const rpcUrl = import.meta.env.POLYGON_RPC_URL || ''
+const walletConnectProjectId = import.meta.env.WALLETCONNECT_PROJECT_ID || ''
+const biconomyApiKey = import.meta.env.BICONOMY_API_KEY || ''
+const biconomyProjectId = import.meta.env.BICONOMY_PROJECT_ID || ''
+const defaultTokenAddress = import.meta.env.DEFAULT_TOKEN_ADDRESS || ''
+const defaultTokenDecimals = import.meta.env.DEFAULT_TOKEN_DECIMALS || '18'
+const defaultTokenSymbol = import.meta.env.DEFAULT_TOKEN_SYMBOL || ''
+const defaultTokenName = import.meta.env.DEFAULT_TOKEN_NAME || ''
+
+// Debug: Log environment variables (remove in production)
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  console.log('🔧 Environment Variables:', {
+    POLYGON_RPC_URL: rpcUrl ? '✓ Set' : '✗ Missing',
+    WALLETCONNECT_PROJECT_ID: walletConnectProjectId ? '✓ Set' : '✗ Missing',
+    BICONOMY_API_KEY: biconomyApiKey ? '✓ Set' : '✗ Missing',
+    BICONOMY_PROJECT_ID: biconomyProjectId ? '✓ Set' : '✗ Missing',
+  })
+}
+
 export const config = {
   // Network configuration - Polygon Mainnet with custom RPC
   chain: {
     ...polygon,
     rpcUrls: {
       default: {
-        http: ['https://polygon-mainnet.g.alchemy.com/v2/j6ZNSZp6cDpLZMOeST0un']
+        http: [rpcUrl]
       },
       public: {
-        http: ['https://polygon-mainnet.g.alchemy.com/v2/j6ZNSZp6cDpLZMOeST0un']
+        http: [rpcUrl]
       }
     }
   },
   // WalletConnect / Web3Modal configuration
   walletConnect: {
-    projectId: '18244949caa0c68708c2025b6a32ed46',
+    projectId: walletConnectProjectId,
     metadata: {
       name: 'Fusion Transfer',
       description: 'Transfer tokens with Biconomy Fusion',
-      url: typeof window !== 'undefined' ? window.location.origin : 'https://fusion-transaction-demo',
+      url: typeof window !== 'undefined' ? window.location.origin : 'https://fusion-transaction',
       icons: ['https://avatars.githubusercontent.com/u/111761645?s=200&v=4']
     }
   },
   
   // Default token configuration
   defaultToken: {
-    address: '0x82d824fC6982fE68d6c27195A1A705FFAbc3D2b6' as `0x${string}`,
-    decimals: 18,
-    symbol: 'MTK',
-    name: 'MyToken'
+    address: defaultTokenAddress as `0x${string}`,
+    decimals: parseInt(defaultTokenDecimals, 10) || 18,
+    symbol: defaultTokenSymbol,
+    name: defaultTokenName
   },
   
   // Biconomy configuration
   biconomy: {
-    apiKey: 'mee_Qh35Xsqw9acrZPk5GcvNLP',
-    projectId: '3fa275ac-0c70-463e-ac91-6ba925aebc5c',
+    apiKey: biconomyApiKey,
+    projectId: biconomyProjectId,
   },
   
   // Explorer URLs

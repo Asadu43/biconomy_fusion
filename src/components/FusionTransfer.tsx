@@ -136,7 +136,7 @@ interface FusionTransferProps {
   userAddress: string
 }
 
-// Helper to get the currently connected wallet provider
+  // Helper to get the currently connected wallet provider
 const getConnectedWalletProvider = (walletClient: WalletClient) => {
   if (typeof window === 'undefined' || !window.ethereum) {
     return null
@@ -152,7 +152,24 @@ const getConnectedWalletProvider = (walletClient: WalletClient) => {
   if ((window.ethereum as any).providers) {
     const providers = (window.ethereum as any).providers
     
+    // Priority: Rabby > Gate > Trust > MetaMask > Others
     // Try to match by connector name
+    if (connectorName.toLowerCase().includes('rabby')) {
+      const rabby = providers.find((p: any) => p.isRabby)
+      if (rabby) {
+        console.log('✅ Using Rabby provider')
+        return rabby
+      }
+    }
+    
+    if (connectorName.toLowerCase().includes('gate')) {
+      const gate = providers.find((p: any) => p.isGateWallet)
+      if (gate) {
+        console.log('✅ Using Gate Wallet provider')
+        return gate
+      }
+    }
+    
     if (connectorName.toLowerCase().includes('trust')) {
       const trustWallet = providers.find((p: any) => p.isTrust || p.isTrustWallet)
       if (trustWallet) {
@@ -260,7 +277,9 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
   useEffect(() => {
     const provider = getConnectedWalletProvider(walletClient)
     if (provider) {
-      const name = (provider as any).isMetaMask ? 'MetaMask' : 
+      const name = (provider as any).isRabby ? 'Rabby' : 
+                   (provider as any).isGateWallet ? 'Gate Wallet' : 
+                   (provider as any).isMetaMask ? 'MetaMask' : 
                    (provider as any).isTrust || (provider as any).isTrustWallet ? 'Trust Wallet' : 
                    (provider as any).isCoinbaseWallet ? 'Coinbase Wallet' : 
                    'Your Wallet'
@@ -403,11 +422,11 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
         throw new Error('No wallet provider found.')
       }
       
+      const isRabby = (provider as any).isRabby
+      const isGate = (provider as any).isGateWallet
       const isTrustWallet = (provider as any).isTrust || (provider as any).isTrustWallet
       const isMetaMask = (provider as any).isMetaMask
-      const walletName = isMetaMask ? 'MetaMask' : isTrustWallet ? 'Trust Wallet' : 'Wallet'
-      
-      setStatus({ type: 'loading', message: `Using ${walletName} for signing...` })
+      const walletName = isRabby ? 'Rabby' : isGate ? 'Gate Wallet' : isMetaMask ? 'MetaMask' : isTrustWallet ? 'Trust Wallet' : 'Wallet'
       
       // Step 2: Create Companion Account (Orchestrator) with the correct wallet
       setStatus({ type: 'loading', message: 'Creating Companion Account...' })
@@ -493,7 +512,7 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
       }
 
       // Execute transaction immediately (no delays)
-      setStatus({ type: 'loading', message: `⚡ Opening ${walletName} for signature...` })
+      setStatus({ type: 'loading', message: `Preparing transaction...` })
       console.log(`⚡ Executing fusion quote...`)
       
       try {
@@ -553,53 +572,46 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
   }
 
   return (
-    <div className="card">
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ marginBottom: '0.5rem' }}>💸 Fusion Mode Transfer</h2>
-        <p style={{ color: '#888', fontSize: '0.9em' }}>
+    <div className="card" style={{ maxWidth: '700px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+        <h2 style={{ 
+          margin: '0 0 0.5rem 0',
+          fontSize: '1.75rem',
+          fontWeight: '600',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text'
+        }}>
+          Fusion Mode Transfer
+        </h2>
+        <p style={{ color: '#888', fontSize: '0.95em', margin: 0 }}>
           Transfer tokens with gas fees sponsored by Biconomy
         </p>
         {detectedWallet && (
-          <>
+          <div style={{ 
+            marginTop: '1rem', 
+            padding: '1rem', 
+            backgroundColor: detectedWallet === 'Rabby' || detectedWallet === 'Gate Wallet' ? '#1a4d1a' : 
+                           detectedWallet === 'Trust Wallet' ? '#4d1a1a' : '#1a4d1a',
+            border: `1px solid ${detectedWallet === 'Trust Wallet' ? '#5a2d2d' : '#2d5a3d'}`,
+            borderRadius: '12px',
+            fontSize: '0.9em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem'
+          }}>
             <div style={{ 
-              marginTop: '0.75rem', 
-              padding: '0.5rem 0.75rem', 
-              backgroundColor: detectedWallet === 'Trust Wallet' ? '#4d1a1a' : '#1a4d1a',
-              border: `1px solid ${detectedWallet === 'Trust Wallet' ? '#5a2d2d' : '#2d5a3d'}`,
-              borderRadius: '6px',
-              fontSize: '0.85em',
-              color: detectedWallet === 'Trust Wallet' ? '#f87171' : '#4ade80'
-            }}>
-              {detectedWallet === 'Trust Wallet' ? '⚠️' : '✓'} Transactions will be signed with <strong>{detectedWallet}</strong>
+              width: '8px', 
+              height: '8px', 
+              borderRadius: '50%', 
+              backgroundColor: detectedWallet === 'Trust Wallet' ? '#f87171' : '#4ade80',
+              boxShadow: `0 0 8px ${detectedWallet === 'Trust Wallet' ? 'rgba(248, 113, 113, 0.6)' : 'rgba(74, 222, 128, 0.6)'}`
+            }} />
+            <div style={{ flex: 1, color: detectedWallet === 'Trust Wallet' ? '#f87171' : '#4ade80' }}>
+              <strong>{detectedWallet}</strong> will be used for signing transactions
             </div>
-            
-            {detectedWallet === 'Trust Wallet' && (
-              <div style={{ 
-                marginTop: '0.5rem', 
-                padding: '0.75rem', 
-                backgroundColor: '#1a1a1a',
-                border: '1px solid #333',
-                borderRadius: '6px',
-                fontSize: '0.85em',
-                color: '#aaa'
-              }}>
-                <div style={{ color: '#f87171', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  ⚠️ Trust Wallet Limitation
-                </div>
-                <div style={{ fontSize: '0.9em', lineHeight: '1.5' }}>
-                  Trust Wallet has limited support for <strong>EIP-712 permit signatures</strong>.
-                  <br/><br/>
-                  <strong>What this means:</strong>
-                  <ul style={{ marginTop: '0.5rem', marginBottom: '0.5rem', paddingLeft: '1.5rem' }}>
-                    <li>You may see an <strong>approval transaction</strong> (not just signature)</li>
-                    <li>This approval requires a <strong>small gas fee</strong> (~0.001 MATIC)</li>
-                    <li>You need MATIC in your wallet for the approval</li>
-                  </ul>
-                  <strong>Recommendation:</strong> Use <strong>MetaMask</strong> for fully gasless transactions with permit signatures.
-                </div>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
 
@@ -709,9 +721,34 @@ export default function FusionTransfer({ walletClient, userAddress }: FusionTran
       <button 
         onClick={handleTransfer}
         disabled={isProcessing || !recipientAddress || !tokenAddress || !amount}
-        style={{ width: '100%', padding: '1em', marginTop: '1rem' }}
+        style={{ 
+          width: '100%', 
+          padding: '1.25em', 
+          marginTop: '1.5rem',
+          fontSize: '1rem',
+          fontWeight: '600',
+          borderRadius: '12px',
+          border: 'none',
+          background: isProcessing || !recipientAddress || !tokenAddress || !amount
+            ? 'linear-gradient(135deg, #333 0%, #222 100%)'
+            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: '#fff',
+          cursor: isProcessing || !recipientAddress || !tokenAddress || !amount ? 'not-allowed' : 'pointer',
+          transition: 'all 0.2s ease',
+          opacity: isProcessing || !recipientAddress || !tokenAddress || !amount ? 0.6 : 1
+        }}
+        onMouseEnter={(e) => {
+          if (!isProcessing && recipientAddress && tokenAddress && amount) {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(102, 126, 234, 0.4)'
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)'
+          e.currentTarget.style.boxShadow = 'none'
+        }}
       >
-        {isProcessing ? '⏳ Processing...' : '🚀 Transfer with Fusion Mode'}
+        {isProcessing ? '⏳ Processing Transaction...' : '🚀 Transfer with Fusion Mode'}
       </button>
 
       {status.message && (
